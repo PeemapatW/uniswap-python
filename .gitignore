@@ -81,3 +81,6 @@ ENV/
 
 # mkdocs documentation
 /site
+
+#Test Notebook
+testswap.ipynb
