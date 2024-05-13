@@ -13,6 +13,7 @@ SIMPLE_CACHE_RPC_WHITELIST = cast(
 
 ETH_ADDRESS = "0x0000000000000000000000000000000000000000"
 WETH9_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+WAVAX_ADDRESS = "0xd00ae08403B9bbb9124bB305C09058E32C39A48c"
 
 # see: https://chainid.network/chains/
 _netid_to_name = {
@@ -31,8 +32,12 @@ _netid_to_name = {
     421611: "arbitrum_testnet",
     1666600000: "harmony_mainnet",
     1666700000: "harmony_testnet",
-    11155111: "sepolia"
+    11155111: "sepolia",
+    8888: "fwx_backward",
+    43113: "avalance_fuji",
+    43114: "avalance_c",
 }
+
 
 _factory_contract_addresses_v1 = {
     "mainnet": "0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95",
@@ -56,7 +61,11 @@ _factory_contract_addresses_v2 = {
     # SushiSwap on Harmony
     "harmony_mainnet": "0xc35DADB65012eC5796536bD9864eD8773aBc74C4",
     "harmony_testnet": "0xc35DADB65012eC5796536bD9864eD8773aBc74C4",
-    "sepolia": "0x7E0987E5b3a30e3f2828572Bb659A548460a3003"
+    "sepolia": "0x7E0987E5b3a30e3f2828572Bb659A548460a3003",
+    # FWX DEX on AVAX
+    # "fwx_backward": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+    "avalance_fuji": "0xF5c7d9733e5f53abCC1695820c4818C59B457C2C", #Joe
+    "avalance_c": "0x9Ad6C38BE94206cA50bb0d90783181662f0Cfa10", #Joe
 }
 
 _router_contract_addresses_v2 = {
@@ -72,6 +81,10 @@ _router_contract_addresses_v2 = {
     "harmony_testnet": "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
     #sepolia tesnet router address
     "sepolia": "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008",
+    # FWX DEX on AVAX
+    # "fwx_backward": "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+    "avalance_fuji": "0xd7f655E3376cE2D7A2b08fF01Eb3B1023191A901", #Joe
+    "avalance_c": "0x60aE616a2155Ee3d9A68541Ba4544862310933d4", #Joe
 }
 
 MAX_UINT_128 = (2**128) - 1

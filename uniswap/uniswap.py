@@ -22,6 +22,7 @@ from web3._utils.normalizers import BASE_RETURN_NORMALIZERS
 from web3.contract import Contract
 from web3.contract.contract import ContractFunction
 from web3.exceptions import BadFunctionCallOutput, ContractLogicError
+from web3.middleware import geth_poa_middleware
 from web3.types import (
     Nonce,
     TxParams,
@@ -35,6 +36,7 @@ from .constants import (
     MAX_UINT_128,
     MIN_TICK,
     WETH9_ADDRESS,
+    WAVAX_ADDRESS,
     _factory_contract_addresses_v1,
     _factory_contract_addresses_v2,
     _netid_to_name,
@@ -92,6 +94,8 @@ class Uniswap:
         factory_contract_addr: Optional[str] = None,
         router_contract_addr: Optional[str] = None,
         enable_caching: bool = False,
+        is_poa: bool = False,
+        use_wavax_address: bool = False, 
     ) -> None:
         """
         :param address: The public address of the ETH wallet to use.
@@ -133,6 +137,9 @@ class Uniswap:
         if enable_caching:
             self.w3.middleware_onion.inject(_get_eth_simple_cache_middleware(), layer=0)
 
+        if is_poa:
+            self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+
         self.netid = int(self.w3.net.version)
         if self.netid in _netid_to_name:
             self.netname = _netid_to_name[self.netid]
@@ -151,6 +158,7 @@ class Uniswap:
         self.max_approval_int = int(max_approval_hex, 16)
         max_approval_check_hex = f"0x{15 * '0'}{49 * 'f'}"
         self.max_approval_check_int = int(max_approval_check_hex, 16)
+        self.use_wavax_address = use_wavax_address
 
         if self.version == 1:
             if factory_contract_addr is None:
@@ -448,6 +456,7 @@ class Uniswap:
         fee: Optional[int] = None,
         slippage: Optional[float] = None,
         fee_on_transfer: bool = False,
+        route: Optional[List[AddressLike]] = None,
     ) -> HexBytes:
         """Make a trade by defining the qty of the input token."""
         if not isinstance(qty, int):
@@ -478,6 +487,7 @@ class Uniswap:
                 fee,
                 slippage,
                 fee_on_transfer,
+                route
             )
 
     @check_approval
@@ -489,6 +499,7 @@ class Uniswap:
         recipient: Optional[AddressLike] = None,
         fee: Optional[int] = None,
         slippage: Optional[float] = None,
+        route: Optional[List[AddressLike]] = None,
     ) -> HexBytes:
         """Make a trade by defining the qty of the output token."""
         fee = validate_fee_tier(fee=fee, version=self.version)
@@ -513,7 +524,7 @@ class Uniswap:
             )
         else:
             return self._token_to_token_swap_output(
-                input_token, output_token, qty, recipient, fee, slippage
+                input_token, output_token, qty, recipient, fee, slippage, route
             )
 
     def _eth_to_token_swap_input(
@@ -695,6 +706,7 @@ class Uniswap:
         fee: int,
         slippage: float,
         fee_on_transfer: bool = False,
+        route: List | None = None,
     ) -> HexBytes:
         """Convert tokens to tokens given an input amount."""
         # Balance check
@@ -709,7 +721,7 @@ class Uniswap:
             raise ValueError
         elif output_token == ETH_ADDRESS:
             raise ValueError
-
+        
         if self.version == 1:
             token_funcs = self._exchange_contract(input_token).functions
             # TODO: This might not be correct
@@ -730,10 +742,12 @@ class Uniswap:
                 function = token_funcs.tokenToTokenTransferInput(*func_params)
             return self._build_and_send_tx(function)
         elif self.version == 2:
+            if not route:
+                route = [input_token, self.get_weth_address(), output_token]
             min_tokens_bought = int(
                 (1 - slippage)
                 * self._get_token_token_input_price(
-                    input_token, output_token, qty, fee=fee
+                    input_token, output_token, qty, fee=fee, route=route
                 )
             )
             if fee_on_transfer:
@@ -746,7 +760,7 @@ class Uniswap:
                 func(
                     qty,
                     min_tokens_bought,
-                    [input_token, self.get_weth_address(), output_token],
+                    route,
                     recipient,
                     self._deadline(),
                 ),
@@ -788,6 +802,7 @@ class Uniswap:
         recipient: Optional[AddressLike],
         fee: int,
         slippage: float,
+        route: List | None = None,
     ) -> HexBytes:
         """Convert ETH to tokens given an output amount."""
         if output_token == ETH_ADDRESS:
@@ -959,6 +974,7 @@ class Uniswap:
         recipient: Optional[AddressLike],
         fee: int,
         slippage: float,
+        route: Optional[List[AddressLike]] = None,
     ) -> HexBytes:
         """Convert tokens to tokens given an output amount.
 
@@ -968,10 +984,9 @@ class Uniswap:
             raise ValueError
         elif output_token == ETH_ADDRESS:
             raise ValueError
-
         # Balance check
         input_balance = self.get_token_balance(input_token)
-        cost = self._get_token_token_output_price(input_token, output_token, qty, fee)
+        cost = self._get_token_token_output_price(input_token, output_token, qty, fee, route)
         amount_in_max = int((1 + slippage) * cost)
         if (
             amount_in_max > input_balance
@@ -1001,14 +1016,16 @@ class Uniswap:
             if recipient is None:
                 recipient = self.address
             cost = self._get_token_token_output_price(
-                input_token, output_token, qty, fee=fee
+                input_token, output_token, qty, fee=fee, route=route
             )
+            if not route:
+                route = [input_token, self.get_weth_address(), output_token]
             amount_in_max = int((1 + slippage) * cost)
             return self._build_and_send_tx(
                 self.router.functions.swapTokensForExactTokens(
                     qty,
                     amount_in_max,
-                    [input_token, self.get_weth_address(), output_token],
+                    route,
                     recipient,
                     self._deadline(),
                 ),
@@ -1618,8 +1635,11 @@ class Uniswap:
     def get_weth_address(self) -> ChecksumAddress:
         """Retrieves the WETH address from the contracts (which may vary between chains)."""
         if self.version == 2:
-            # Contract calls should always return checksummed addresses
-            address: ChecksumAddress = self.router.functions.WETH().call()
+            if self.use_wavax_address:
+                address: ChecksumAddress = WAVAX_ADDRESS
+            else:
+                # Contract calls should always return checksummed addresses
+                address: ChecksumAddress = self.router.functions.WETH().call()
         elif self.version == 3:
             address = self.router.functions.WETH9().call()
         else:
